@@ -15,15 +15,5 @@ namespace StateManagerLib.StateModels
         /// プロパティタイプのプロパティ
         /// </summary>
         IEnumerable<IPropertyState> Properties { get; }
-        /// <summary>
-        /// プロパティタイプのプロパティの追加
-        /// </summary>
-        /// <param name="propertyState"></param>
-        void AddDescendantProperty(IPropertyState propertyState);
-        /// <summary>
-        /// プロパティタイプのプロパティの追加
-        /// </summary>
-        /// <param name="propertyStates"></param>
-        void AddDescendantProperties(IEnumerable<IPropertyState> propertyStates);
     }
 }

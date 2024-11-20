@@ -1,11 +1,10 @@
-﻿using StateManagerLib.Commands;
+﻿using LinqExtenssions;
+using StateManagerLib.Commands;
 using StateManagerLib.Internals;
 using StateManagerLib.StateModels;
-using System;
 using System.Collections;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Reactive;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Reflection;
@@ -14,10 +13,21 @@ namespace StateManagerLib
 {
     public class StateCollecion : IStateCollecion,IDisposable
     {
+        /// <summary>
+        /// 再帰取得するネスト深さ
+        /// </summary>
         int nest = 12;
+        /// <summary>
+        /// コマンドの一覧
+        /// </summary>
         readonly IList<IExecuteCommand> commandList = new List<IExecuteCommand>();
-
+        /// <summary>
+        /// Stateの一覧
+        /// </summary>
         readonly IList<IStateBase> stateList = new List<IStateBase>();
+        /// <summary>
+        /// オブザーバーの破棄コレクション
+        /// </summary>
         readonly CompositeDisposable disposables = new CompositeDisposable();
         /// <summary>
         /// プロパティを検索する深さ
@@ -31,7 +41,10 @@ namespace StateManagerLib
                 System.Diagnostics.Debug.Assert(100 > nest, "The nested level set for property search exceeds 100.");
             }
         }
-
+        /// <summary>
+        /// 状態の追加
+        /// </summary>
+        /// <param name="value"></param>
         protected void AddState(object value)
         {
             if(value is null)
@@ -41,15 +54,36 @@ namespace StateManagerLib
             var root=new RootState(value);
             var properties = root.Value.GetType().GetProperties();
             var list = new List<IPropertyState>();
+
+            if(value is INotifyPropertyChanged)
+            {
+                disposables.Add(
+                    Observable.FromEventPattern<PropertyChangedEventArgs>(value,
+                    )
+            }
+
             foreach (var property in properties)
             {
                 var addChild = new PropertyState(root, property.Name, [property.Name]);
-                if(property.PropertyType.GetInterface(nameof(INotifyPropertyChanged)) is not null)
+                if(property is INotifyPropertyChanged)
                 {
                     disposables.Add(
                         Observable.FromEventPattern<PropertyChangedEventArgs>(value, nameof(INotifyPropertyChanged.PropertyChanged)).Subscribe(t =>
                         {
-                            t.EventArgs.
+                            var propName=t.EventArgs.PropertyName;
+                            if(propName is (null or "") ||
+                                root.Properties.FirstOrDefault(x => x.Name == propName) is not PropertyState propertyState)
+                            {
+                                return;
+                            }
+                            if (value.GetValueFromPropertyPath(propName).IfDeclare(out var result))
+                            {
+                                propertyState!.AddPropertyChangeObserver(result!);
+                            }
+                            else
+                            {
+                                propertyState.Dispose();
+                            }
                         })
                     );
                 }
@@ -60,7 +94,13 @@ namespace StateManagerLib
             }
             root.AddDescendantProperties(list);
         }
-
+        /// <summary>
+        /// 再帰的に取得したプロパティをIPropertyStateに変換する
+        /// </summary>
+        /// <param name="property"></param>
+        /// <param name="stateBase"></param>
+        /// <param name="nestedLevel"></param>
+        /// <returns></returns>
         protected IEnumerable<IPropertyState> GetState(PropertyInfo property, IPropertyState stateBase, int nestedLevel)
         {
             if (nestedLevel > FindPropertyNest)

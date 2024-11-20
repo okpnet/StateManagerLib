@@ -1,20 +1,26 @@
-﻿using StateManagerLib.Collections;
+﻿using LinqExtenssions;
+using StateManagerLib.Collections;
+using StateManagerLib.Commands;
 using StateManagerLib.Extensions;
-using System;
-using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Linq;
-using System.Reactive;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace StateManagerLib.StateModels
 {
     public class PropertyState:IPropertyState,IReferenceState,IStateBase,IDisposable
     {
-        IDisposable? disposable;
+
+        protected LinkedList<IExecuteCommand> statefulCommands;
+
+        /// <summary>
+        /// オブザーバーの削除コレクション
+        /// </summary>
+        protected readonly CompositeDisposable disposables = new CompositeDisposable();
+        /// <summary>
+        /// 
+        /// </summary>
         protected IList<IPropertyState> properties=new List<IPropertyState>();
         /// <summary>
         /// 状態に対して行った変更
@@ -24,6 +30,10 @@ namespace StateManagerLib.StateModels
         /// 親の状態インターフェイス
         /// </summary>
         public IStateBase Parent { get; } = default!;
+        /// <summary>
+        /// トップ状態オブジェクト
+        /// </summary>
+        public IRootState Root => (IRootState)GetRootState(this);
         /// <summary>
         /// プロパティの名前
         /// </summary>
@@ -54,62 +64,76 @@ namespace StateManagerLib.StateModels
             Paths = paths;
         }
 
+
         public PropertyState(IStateBase parent, string name, string[] paths,IEnumerable<IPropertyState> propertyStates):this(parent, name, paths)
         {
             properties=propertyStates.ToList();
         }
-
-        public void AddPropertyChangeObserver(object value)
+        /// <summary>
+        /// 変更イベントリスナー登録
+        /// </summary>
+        /// <param name="value"></param>
+        /// <exception cref="NotImplementedException"></exception>
+        public void AddNotifyChangedListener(object value)
         {
-            if(value is INotifyPropertyChanged)
+            properties.ClaerList();
+            if (!this.GetPropertyStates(value).IfDeclare(out var resultList))
             {
-                disposable = Observable.FromEventPattern<PropertyChangedEventArgs>(value, nameof(INotifyPropertyChanged.PropertyChanged)).Subscribe(t =>
-                {
-                    if (t.EventArgs.PropertyName != Name)
-                    {
-                        return;
-                    }
-                    var path = string.Join('.', Paths);
-                    var val = value.GetValueFromPropertyPath(Name);
-                    //コマンド追加
-
-                    if (val is INotifyPropertyChanged notify || val is INotifyCollectionChanged)
-                    {//イベント追加
-                        foreach (var prop in properties)
-                        {
-                            prop.AddPropertyChangeObserver(val);
-                        }
-                    }
-                });
+                ((List<IPropertyState>)properties).AddRange(resultList);
             }
-            else if(value is INotifyCollectionChanged)
-            {
-                disposable = Observable.FromEventPattern<NotifyCollectionChangedEventArgs>(value, nameof(INotifyPropertyChanged.PropertyChanged)).Subscribe(t =>
-                {
-                    if (t.EventArgs. != Name)
-                    {
-                        return;
-                    }
-                    var path = string.Join('.', Paths);
-                    var val = value.GetValueFromPropertyPath(Name);
-                    //コマンド追加
 
-                    if (val is INotifyPropertyChanged notify || val is INotifyCollectionChanged)
-                    {//イベント追加
-                        foreach (var prop in properties)
-                        {
-                            prop.AddPropertyChangeObserver(val);
-                        }
+            disposables.Add(
+                    value switch
+                    {
+                        INotifyCollectionChanged collectionNotify => this.CreateINotifyCollectionChangedSubscriber(value),
+                        INotifyPropertyChanged propertyNotify => Properties.CreateINotifyPropertyChangedSubscriber(value),
+                        _ => throw new NotImplementedException()
                     }
-                });
-            }
+                );
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="command"></param>
+        public void AddCommandToState(IExecuteCommand command)
+        {
+            statefulCommands.AddFirst(command);
         }
 
-
+        public void Stateful(IExecuteCommand? command)
+        {
+            if (statefulCommands.First is null)
+            {
+                return;
+            }
+            while (statefulCommands.First.Value != command)
+            {
+                statefulCommands.RemoveFirst();
+            }
+        }
+        /// <summary>
+        /// トップを取得
+        /// </summary>
+        /// <param name="state"></param>
+        /// <returns></returns>
+        /// <exception cref="OverflowException"></exception>
+        protected IStateBase GetRootState(IStateBase state)
+        {
+            if(state is IRootState rootState)
+            {
+                return rootState;
+            }
+            if (state is IPropertyState propertyState && propertyState.Parent is not null)
+            {
+                return GetRootState(propertyState.Parent);
+            }
+            throw new OverflowException("Argment is not IPropertyState or IRootState.");
+        }
 
         public void Dispose()
         {
-            disposable?.Dispose();
+            disposables.Clear();
+            GC.SuppressFinalize(this);
         }
     }
 }

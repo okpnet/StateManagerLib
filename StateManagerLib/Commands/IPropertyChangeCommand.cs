@@ -1,4 +1,5 @@
-﻿using System;
+﻿using StateManagerLib.StateModels;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,16 +13,16 @@ namespace StateManagerLib.Commands
     public interface IPropertyChangeCommand:IExecuteCommand
     {
         /// <summary>
-        /// セットしたプロパティのパス
+        /// オーナー
         /// </summary>
-        string PropertyPath { get; }
+        new IPropertyState Owner { get; }
         /// <summary>
-        /// セットされるまえの値
+        /// プロパティ名
         /// </summary>
-        object? BeforeValue { get; }
+        string Name { get; }
         /// <summary>
-        /// セットされた後の値
+        /// セットされたインスタンス
         /// </summary>
-        object? AfterValue { get; }
+        object? Value { get; }
     }
 }

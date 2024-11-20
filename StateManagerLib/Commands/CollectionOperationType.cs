@@ -13,5 +13,6 @@ namespace StateManagerLib.Commands
     {
         CollectionAdd = 0x1,
         CollectionRemove = 0x2,
+        CollectionReset=0x0,
     }
 }

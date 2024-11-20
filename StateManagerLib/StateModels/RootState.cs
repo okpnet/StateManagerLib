@@ -1,15 +1,28 @@
 ﻿using StateManagerLib.Collections;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using StateManagerLib.Extensions;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Reactive.Disposables;
 
 namespace StateManagerLib.StateModels
 {
-    public class RootState : IRootState,IReferenceState, IStateBase
+    /// <summary>
+    /// トップノード
+    /// </summary>
+    public class RootState : IRootState,IReferenceState, IStateBase,IDisposable
     {
+        /// <summary>
+        /// オブザーバーの削除コレクション
+        /// </summary>
+        protected readonly CompositeDisposable disposables = new CompositeDisposable();
+        /// <summary>
+        /// プロパティの状態オブジェクトリスト
+        /// </summary>
         protected IList<IPropertyState> properties = new List<IPropertyState>();
+        /// <summary>
+        /// コマンドのスタック
+        /// </summary>
+        public ICommandStack CommandStack { get; }
         /// <summary>
         /// ルートオブジェクト
         /// </summary>
@@ -26,25 +39,40 @@ namespace StateManagerLib.StateModels
         /// プロパティタイプのプロパティ
         /// </summary>
         public IEnumerable<IPropertyState> Properties => properties;
-        /// <summary>
-        /// プロパティタイプのプロパティの追加
-        /// </summary>
-        /// <param name="propertyState"></param>
-        public void AddDescendantProperty(IPropertyState propertyState) => properties.Add(propertyState);
-        /// <summary>
-        /// プロパティタイプのプロパティの追加
-        /// </summary>
-        /// <param name="propertyStates"></param>
-        public void AddDescendantProperties(IEnumerable<IPropertyState> propertyStates) => ((List<IPropertyState>)properties).AddRange(propertyStates);
 
-        public RootState(object value)
+        public RootState(object value, ICommandStack commandStack)
         {
             Value = value;
+            CommandStack = commandStack;
+            ((List<IPropertyState>)properties).AddRange(this.GetPropertyStates(Value));
+            AddEventListener();
+        }
+        /// <summary>
+        /// トップ状態オブジェクトのプロパティチェンジイベントのリスナー登録
+        /// </summary>
+        protected void AddEventListener()
+        {
+            if(Value is not INotifyPropertyChanged || Value is not INotifyCollectionChanged)
+            {
+                return;
+            }
+
+            disposables.Add(
+                    Value switch
+                    {
+                        INotifyCollectionChanged collectionNotify => this.CreateINotifyCollectionChangedSubscriber(Value),
+                        INotifyPropertyChanged propertyNotify => Properties.CreateINotifyPropertyChangedSubscriber(Value),
+                        _ => throw new NotImplementedException()
+                    }
+                );
         }
 
-        public RootState(object value, IEnumerable<IPropertyState> propertyStates) : this(value)
+
+
+        public void Dispose()
         {
-            AddDescendantProperties(propertyStates);
+            disposables.Clear();
+            GC.SuppressFinalize(this);
         }
     }
 }

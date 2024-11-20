@@ -7,19 +7,21 @@ using System.Threading.Tasks;
 
 namespace StateManagerLib.Commands
 {
-    /// <summary>
-    /// 実行コマンドインターフェイス
-    /// </summary>
-    public interface IExecuteCommand
+    public abstract class Command:IExecuteCommand
     {
         /// <summary>
         /// オーナー
         /// </summary>
-        public IStateBase Owner { get; }
+        public IStateBase Owner { get; } = default!;
         /// <summary>
         /// 戻す
         /// </summary>
         /// <returns></returns>
-        bool Execute(object refValue);
+        public abstract bool Execute(object refValue);
+
+        protected Command(IStateBase owner)
+        {
+            Owner = owner;
+        }
     }
 }

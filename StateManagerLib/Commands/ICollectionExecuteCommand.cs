@@ -14,8 +14,8 @@ namespace StateManagerLib.Commands
         /// </summary>
         CollectionOperationType Operation { get; }
         /// <summary>
-        /// セットされるまえの値
+        /// セットされた値
         /// </summary>
-        object? BeforeValue { get; }
+        object? Value { get; }
     }
 }

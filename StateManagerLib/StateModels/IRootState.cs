@@ -12,6 +12,10 @@ namespace StateManagerLib.StateModels
     public interface IRootState:IStateBase
     {
         /// <summary>
+        /// コマンドのスタック
+        /// </summary>
+        ICommandStack CommandStack { get; }
+        /// <summary>
         /// ルートオブジェクト
         /// </summary>
         object Value { get; }

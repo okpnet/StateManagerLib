@@ -1,4 +1,5 @@
-﻿using System;
+﻿using StateManagerLib.Commands;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,9 +13,13 @@ namespace StateManagerLib.StateModels
     public interface IPropertyState:IStateBase
     {
         /// <summary>
-        /// 親の状態インターフェイス
+        /// 親の状態オブジェクト
         /// </summary>
         IStateBase Parent { get; }
+        /// <summary>
+        /// トップ状態オブジェクト
+        /// </summary>
+        IRootState Root { get; }
         /// <summary>
         /// プロパティの名前
         /// </summary>
@@ -27,6 +32,7 @@ namespace StateManagerLib.StateModels
         /// 監視イベント追加
         /// </summary>
         /// <param name="value"></param>
-        void AddPropertyChangeObserver(object value);
+        void AddNotifyChangedListener(object value);
+        public void AddCommandToState(IExecuteCommand command);
     }
 }

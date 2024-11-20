@@ -31,5 +31,17 @@ namespace LinqExtenssions
             if (source == null) return Enumerable.Empty<T>();
             return source.Where(x => x != null)!;
         }
+        /// <summary>
+        /// キャストした値をOutにセットして､値を返す
+        /// </summary>
+        /// <typeparam name="TResult"></typeparam>
+        /// <param name="value"></param>
+        /// <param name="result"></param>
+        /// <returns></returns>
+        public static bool IfDeclare<TResult>(this TResult value, out TResult result)
+        {
+            result = value;
+            return result is not null;
+        }
     }
 }
