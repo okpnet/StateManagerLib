@@ -1,4 +1,5 @@
-﻿using StateManagerLib.StateModels;
+﻿using LinqExtenssions;
+using StateManagerLib.StateModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,45 +17,32 @@ namespace StateManagerLib.Commands
         /// プロパティ名
         /// </summary>
         public string Name { get; }
-        /// <summary>
-        /// オーナー
-        /// </summary>
-        public new IPropertyState Owner
-        {
-            get
-            {
-                if(base.Owner is not PropertyState property)
-                {
-                    throw new InvalidOperationException();
-                }
-                return property;
-            }
-        }
-        /// <summary>
-        /// セットされたインスタンス
-        /// </summary>
-        public object? Value { get; set; }
 
-        public PropertyChangeCommand(IPropertyState owner,string name,object? value) : base(owner)
+        public PropertyChangeCommand(IStateBase owner,string name,object? value) : base(owner,value)
         {
-            Value = value;
             Name = name;
         }
         /// <summary>
         /// 戻す
         /// </summary>
         /// <returns></returns>
-        public override bool Execute(object refValue)
+        public override bool Execute()
         {
+            var refValue=Owner switch
+            {
+                IRootState root => root.Value,
+                IPropertyState property => property.Root.Value.GetValueFromPropertyPath(string.Join('.', property.Paths)),
+                _ => null
+            };
             if(refValue is null)
             {
                 return false;
             } 
 
-            var propinfo = refValue.GetType().GetProperty(Owner.Name);
+            var propinfo = refValue.GetType().GetProperty(Name);
             if (propinfo is null)
             {
-                throw new ArgumentNullException($"`refValue` has not {Owner.Name} properties.");
+                throw new ArgumentNullException($"`refValue` has not {Name} properties.");
             }
             propinfo.SetValue(refValue, Value);
             return true;

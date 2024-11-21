@@ -13,10 +13,6 @@ namespace StateManagerLib.Commands
     public interface IPropertyChangeCommand:IExecuteCommand
     {
         /// <summary>
-        /// オーナー
-        /// </summary>
-        new IPropertyState Owner { get; }
-        /// <summary>
         /// プロパティ名
         /// </summary>
         string Name { get; }

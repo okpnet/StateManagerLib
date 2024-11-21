@@ -1,194 +1,212 @@
 ﻿using LinqExtenssions;
 using StateManagerLib.Commands;
-using StateManagerLib.Internals;
+using StateManagerLib.Extensions;
 using StateManagerLib.StateModels;
 using System.Collections;
-using System.Collections.Specialized;
-using System.ComponentModel;
-using System.Reactive.Disposables;
 using System.Reactive.Linq;
-using System.Reflection;
 
 namespace StateManagerLib
 {
-    public class StateCollecion : IStateCollecion,IDisposable
+    /// <summary>
+    /// 状態オブジェクトコレクション
+    /// </summary>
+    public class StateCollecion : StateCollectionBase,IStateCollecion, ICommandStack,IDisposable
     {
         /// <summary>
-        /// 再帰取得するネスト深さ
+        /// 戻した実行実績
         /// </summary>
-        int nest = 12;
-        /// <summary>
-        /// コマンドの一覧
-        /// </summary>
-        readonly IList<IExecuteCommand> commandList = new List<IExecuteCommand>();
+        readonly LinkedList<IExecuteCommand> discardedCommands = new ();  
         /// <summary>
         /// Stateの一覧
         /// </summary>
-        readonly IList<IStateBase> stateList = new List<IStateBase>();
+        readonly IList<IRootState> stateList = [];
+        
         /// <summary>
-        /// オブザーバーの破棄コレクション
+        /// 状態管理の登録をしたオブジェクト
         /// </summary>
-        readonly CompositeDisposable disposables = new CompositeDisposable();
-        /// <summary>
-        /// プロパティを検索する深さ
-        /// </summary>
-        public int FindPropertyNest 
+        public IEnumerable<object> StateValues => stateList.Select(t => t.Value);
+
+        public int Count => stateList.Count;
+
+        public bool IsReadOnly => false;
+
+        public object this[int index] 
         {
-            get => nest;
-            set
+            get=> stateList[index].Value;
+            set 
             {
-                nest = 0 >= value ? 1 : value;
-                System.Diagnostics.Debug.Assert(100 > nest, "The nested level set for property search exceeds 100.");
+                var val = stateList[index].Value;
+                if (Remove(val))
+                {
+                    Insert(index, new RootState(value,this));
+                }
+            }
+        }
+
+        public override void Dispose()
+        {
+            discardedCommands.Clear();
+            foreach(var state in stateList)
+            {
+                ((IDisposable)state).Dispose();
+            }
+            stateList.Clear();
+            base.Dispose();
+        }
+        /// <summary>
+        /// 元に戻す
+        /// </summary>
+        public void Undo()
+        {
+            if(current is not null)
+            {
+                discardedCommands.AddFirst(current);
+                current = null;
+            }
+            if(executeCommands.FirstOrDefault().IfDeclare(out var cmd))
+            {
+                current = cmd!;
+                current.ToExecute();
+                executeCommands.RemoveFirst();
             }
         }
         /// <summary>
-        /// 状態の追加
+        /// 引数のオブジェクトだけ戻す
+        /// 追加されていないときは何もしない
         /// </summary>
         /// <param name="value"></param>
-        protected void AddState(object value)
+            
+        public void Undo(object value)
         {
-            if(value is null)
+            if (!stateList.FirstOrDefault(t => ReferenceEquals(t.Value, value) | Equals(t.Value, value)).IfDeclare(out var root))
             {
                 return;
             }
-            var root=new RootState(value);
-            var properties = root.Value.GetType().GetProperties();
-            var list = new List<IPropertyState>();
-
-            if(value is INotifyPropertyChanged)
+            if (!executeCommands.FirstOrDefault(t => root!.GetAllDescendants().Contains(t.Owner)).IfDeclare(out var cmd))
             {
-                disposables.Add(
-                    Observable.FromEventPattern<PropertyChangedEventArgs>(value,
-                    )
+                return;
             }
-
-            foreach (var property in properties)
+            if (current is not null)
             {
-                var addChild = new PropertyState(root, property.Name, [property.Name]);
-                if(property is INotifyPropertyChanged)
-                {
-                    disposables.Add(
-                        Observable.FromEventPattern<PropertyChangedEventArgs>(value, nameof(INotifyPropertyChanged.PropertyChanged)).Subscribe(t =>
-                        {
-                            var propName=t.EventArgs.PropertyName;
-                            if(propName is (null or "") ||
-                                root.Properties.FirstOrDefault(x => x.Name == propName) is not PropertyState propertyState)
-                            {
-                                return;
-                            }
-                            if (value.GetValueFromPropertyPath(propName).IfDeclare(out var result))
-                            {
-                                propertyState!.AddPropertyChangeObserver(result!);
-                            }
-                            else
-                            {
-                                propertyState.Dispose();
-                            }
-                        })
-                    );
-                }
-                var descendants = GetState(property, addChild, 1);
-                addChild.AddDescendantProperties(descendants);
-
-                list.Add(addChild);
+                discardedCommands.AddFirst(current);
+                current = null;
             }
-            root.AddDescendantProperties(list);
+            current = cmd!;
+            current.ToExecute();
+            executeCommands.Remove(cmd!);
         }
         /// <summary>
-        /// 再帰的に取得したプロパティをIPropertyStateに変換する
+        /// 元に戻す
         /// </summary>
-        /// <param name="property"></param>
-        /// <param name="stateBase"></param>
-        /// <param name="nestedLevel"></param>
-        /// <returns></returns>
-        protected IEnumerable<IPropertyState> GetState(PropertyInfo property, IPropertyState stateBase, int nestedLevel)
+        public void Redo()
         {
-            if (nestedLevel > FindPropertyNest)
+            if(current is not null)
             {
-                yield break;
+                executeCommands.AddFirst(current);
+                current = null;
             }
-            var list = new List<IPropertyState>();
-            var properties = property.PropertyType.GetProperties();
-            foreach (var prop in properties) 
+            if (discardedCommands.FirstOrDefault().IfDeclare(out var cmd))
             {
-                var addChild= new PropertyState(stateBase,prop.Name, stateBase.Paths.Append(prop.Name).ToArray());
-                var descendants = GetState(prop, addChild, nestedLevel++);
-                addChild.AddDescendantProperties(descendants);
-                yield return addChild;
+                current= cmd!;
+                current.ToExecute();
+                discardedCommands.RemoveFirst();
             }
         }
         /// <summary>
-        /// プロパティの展開
+        /// 引数のオブジェクトだけ元に戻す
+        /// リストに無いときは何もしない
         /// </summary>
-        /// <param name="findPropertyResult"></param>
-        /// <returns></returns>
-        internal IEnumerable<FindPropertyResult> GetProperties(FindPropertyResult findPropertyResult)
+        /// <param name="value"></param>
+        public void Redo(object value)
         {
-            if(findPropertyResult.Property.PropertyType.GetInterface(nameof(INotifyPropertyChanged)) is not null ||
-                findPropertyResult.Property.PropertyType.GetInterface(nameof(INotifyCollectionChanged)) is not null
-                )
+            if(!stateList.FirstOrDefault(t=>ReferenceEquals(t.Value,value) | Equals(t.Value,value)).IfDeclare(out var root))
             {
-                yield return findPropertyResult;
+                return;
             }
-
-            if(findPropertyResult.NestLevel > FindPropertyNest)
+            if (!discardedCommands.FirstOrDefault(t => root!.GetAllDescendants().Contains(t.Owner)).IfDeclare(out var cmd))
             {
-                yield break;
+                return;
             }
-
-            var props = findPropertyResult.Property.PropertyType.GetProperties();
-            foreach (var prop in props)
+            if (current is not null)
             {
-                var results = GetProperties(new FindPropertyResult(prop, findPropertyResult.Path.Append(prop.Name).ToArray(), findPropertyResult.NestLevel + 1));
-                foreach(var result in results)
-                {
-                    yield return result;
-                }
+                executeCommands.AddFirst(current);
+                current = null;
             }
+            current = cmd!;
+            current.ToExecute();
+            discardedCommands.Remove(cmd!);
         }
 
-        public int Count => throw new NotImplementedException();
 
-        public bool IsReadOnly => throw new NotImplementedException();
-
-        public void Add(IStateBase item)
+        public int IndexOf(object item)
         {
-            throw new NotImplementedException();
+            var stateItem = stateList.FirstOrDefault(t => ReferenceEquals(t.Value, item) | Equals(t.Value, item));
+            if(stateItem is null)
+            {
+                return -1;
+            }
+            return stateList.IndexOf(stateItem);
+        }
+
+        public void Insert(int index, object item)
+        {
+            if (item is null || stateList.Any(t => ReferenceEquals(t.Value, item)))
+            {
+                return;
+            }
+            stateList.Insert(index,new RootState(item, this));
+        }
+
+        public void RemoveAt(int index)
+        {
+            stateList.RemoveAt(index);
+        }
+
+        public void Add(object item)
+        {
+            if (item is null || stateList.Any(t=>ReferenceEquals(t.Value,item) | Equals(t.Value,item)))
+            {
+                return;
+            }
+            stateList.Add(new RootState(item, this));
         }
 
         public void Clear()
         {
-            throw new NotImplementedException();
+            stateList.Clear();
+            discardedCommands.Clear();
+            executeCommands.Clear();
         }
 
-        public bool Contains(IStateBase item)
+        public bool Contains(object item)
         {
-            throw new NotImplementedException();
+            return stateList.Any(t=>t.Value == item);
         }
 
-        public void CopyTo(IStateBase[] array, int arrayIndex)
+        public void CopyTo(object[] array, int arrayIndex)
         {
-            throw new NotImplementedException();
+            Array.Copy(stateList.Select(t => t.Value).ToArray(), array, Count);
         }
 
-        public IEnumerator<IStateBase> GetEnumerator()
+        public bool Remove(object item)
         {
-            throw new NotImplementedException();
+            var removeItem=stateList.FirstOrDefault(t=>t.Value == item);
+            if(removeItem is not null)
+            {
+                ((IDisposable)removeItem).Dispose();
+                return stateList.Remove(removeItem);
+            }
+            return false;
         }
 
-        public bool Remove(IStateBase item)
+        public IEnumerator<object> GetEnumerator()
         {
-            throw new NotImplementedException();
+            return stateList.Select(t => t.Value).GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
         {
-            throw new NotImplementedException();
-        }
-
-        public void Dispose()
-        {
-            disposables.Clear();
+            return GetEnumerator();
         }
     }
 }

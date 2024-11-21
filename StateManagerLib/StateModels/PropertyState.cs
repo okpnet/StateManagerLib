@@ -1,5 +1,4 @@
 ﻿using LinqExtenssions;
-using StateManagerLib.Collections;
 using StateManagerLib.Commands;
 using StateManagerLib.Extensions;
 using System.Collections.Specialized;
@@ -9,23 +8,19 @@ using System.Reactive.Linq;
 
 namespace StateManagerLib.StateModels
 {
-    public class PropertyState:IPropertyState,IReferenceState,IStateBase,IDisposable
+    /// <summary>
+    /// プロパティの状態
+    /// </summary>
+    public class PropertyState:StateBase,IPropertyState,IReferenceState,IStateBase,IDisposable
     {
-
-        protected LinkedList<IExecuteCommand> statefulCommands;
-
         /// <summary>
         /// オブザーバーの削除コレクション
         /// </summary>
         protected readonly CompositeDisposable disposables = new CompositeDisposable();
         /// <summary>
-        /// 
+        /// メンバ
         /// </summary>
-        protected IList<IPropertyState> properties=new List<IPropertyState>();
-        /// <summary>
-        /// 状態に対して行った変更
-        /// </summary>
-        public ICommandCollection Commands { get; }
+        protected IList<IPropertyState> properties=[];
         /// <summary>
         /// 親の状態インターフェイス
         /// </summary>
@@ -34,6 +29,10 @@ namespace StateManagerLib.StateModels
         /// トップ状態オブジェクト
         /// </summary>
         public IRootState Root => (IRootState)GetRootState(this);
+        /// <summary>
+        /// コマンドのスタック
+        /// </summary>
+        public override ICommandStack CommandStack=>Root.CommandStack;
         /// <summary>
         /// プロパティの名前
         /// </summary>
@@ -46,6 +45,15 @@ namespace StateManagerLib.StateModels
         /// プロパティタイプのプロパティ
         /// </summary>
         public IEnumerable<IPropertyState> Properties => properties;
+
+        public object? ParentValue
+        {
+            get
+            {
+                var path = string.Join('.', Paths);
+                return Root.Value.GetValueFromPropertyPath(path);
+            }
+        }
         /// <summary>
         /// プロパティタイプのプロパティの追加
         /// </summary>
@@ -86,18 +94,10 @@ namespace StateManagerLib.StateModels
                     value switch
                     {
                         INotifyCollectionChanged collectionNotify => this.CreateINotifyCollectionChangedSubscriber(value),
-                        INotifyPropertyChanged propertyNotify => Properties.CreateINotifyPropertyChangedSubscriber(value),
+                        INotifyPropertyChanged propertyNotify => this.CreateINotifyPropertyChangedSubscriber(value),
                         _ => throw new NotImplementedException()
                     }
                 );
-        }
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="command"></param>
-        public void AddCommandToState(IExecuteCommand command)
-        {
-            statefulCommands.AddFirst(command);
         }
 
         public void Stateful(IExecuteCommand? command)
@@ -133,6 +133,11 @@ namespace StateManagerLib.StateModels
         public void Dispose()
         {
             disposables.Clear();
+            foreach (var item in properties)
+            {
+                ((IDisposable)item).Dispose();
+            }
+            properties.Clear();
             GC.SuppressFinalize(this);
         }
     }

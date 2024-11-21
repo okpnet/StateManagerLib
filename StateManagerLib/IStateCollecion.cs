@@ -8,13 +8,28 @@ using System.Windows.Input;
 
 namespace StateManagerLib
 {
-    public interface IStateCollecion
+    /// <summary>
+    /// オブジェクトの元に戻す、進むを管理する
+    /// </summary>
+    public interface IStateCollecion:IList<object>
     {
         /// <summary>
-        /// プロパティを検索する深さ
+        /// 戻す
         /// </summary>
-        int FindPropertyNest { get; set; }
-
-        void CommandRegister()
+        void Undo();
+        /// <summary>
+        /// 進む
+        /// </summary>
+        void Redo();
+        /// <summary>
+        /// valueを戻す
+        /// </summary>
+        /// <param name="value"></param>
+        void Undo(object value);
+        /// <summary>
+        /// valueを進める
+        /// </summary>
+        /// <param name="value"></param>
+        void Redo(object value);
     }
 }

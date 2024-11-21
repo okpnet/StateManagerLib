@@ -1,7 +1,8 @@
-﻿using StateManagerLib.Collections;
+﻿using StateManagerLib.Commands;
 using StateManagerLib.Extensions;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Reactive.Disposables;
 
 namespace StateManagerLib.StateModels
@@ -9,7 +10,7 @@ namespace StateManagerLib.StateModels
     /// <summary>
     /// トップノード
     /// </summary>
-    public class RootState : IRootState,IReferenceState, IStateBase,IDisposable
+    public class RootState : StateBase,IRootState,IReferenceState, IStateBase,IDisposable
     {
         /// <summary>
         /// オブザーバーの削除コレクション
@@ -22,15 +23,11 @@ namespace StateManagerLib.StateModels
         /// <summary>
         /// コマンドのスタック
         /// </summary>
-        public ICommandStack CommandStack { get; }
+        public override ICommandStack CommandStack { get; }
         /// <summary>
         /// ルートオブジェクト
         /// </summary>
         public object Value { get; }
-        /// <summary>
-        /// 状態に対して行った変更
-        /// </summary>
-        public ICommandCollection Commands { get; }
         /// <summary>
         /// 親の状態インターフェイス
         /// </summary>
@@ -42,9 +39,9 @@ namespace StateManagerLib.StateModels
 
         public RootState(object value, ICommandStack commandStack)
         {
-            Value = value;
             CommandStack = commandStack;
-            ((List<IPropertyState>)properties).AddRange(this.GetPropertyStates(Value));
+            Value = value;
+            ((List<IPropertyState>)properties).AddRange(this.GetPropertyStates(value));
             AddEventListener();
         }
         /// <summary>
@@ -52,7 +49,7 @@ namespace StateManagerLib.StateModels
         /// </summary>
         protected void AddEventListener()
         {
-            if(Value is not INotifyPropertyChanged || Value is not INotifyCollectionChanged)
+            if(Value is not INotifyPropertyChanged && Value is not INotifyCollectionChanged)
             {
                 return;
             }
@@ -61,17 +58,20 @@ namespace StateManagerLib.StateModels
                     Value switch
                     {
                         INotifyCollectionChanged collectionNotify => this.CreateINotifyCollectionChangedSubscriber(Value),
-                        INotifyPropertyChanged propertyNotify => Properties.CreateINotifyPropertyChangedSubscriber(Value),
+                        INotifyPropertyChanged propertyNotify => this.CreateINotifyPropertyChangedSubscriber(Value),
                         _ => throw new NotImplementedException()
                     }
                 );
         }
 
-
-
         public void Dispose()
         {
             disposables.Clear();
+            foreach(var item in properties)
+            {
+                ((IDisposable)item).Dispose();
+            }
+            properties.Clear();
             GC.SuppressFinalize(this);
         }
     }

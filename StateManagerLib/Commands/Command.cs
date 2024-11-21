@@ -1,9 +1,4 @@
 ﻿using StateManagerLib.StateModels;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace StateManagerLib.Commands
 {
@@ -14,14 +9,19 @@ namespace StateManagerLib.Commands
         /// </summary>
         public IStateBase Owner { get; } = default!;
         /// <summary>
+        /// セットされたインスタンス
+        /// </summary>
+        public object? Value { get; }
+        /// <summary>
         /// 戻す
         /// </summary>
         /// <returns></returns>
-        public abstract bool Execute(object refValue);
+        public abstract bool Execute();
 
-        protected Command(IStateBase owner)
+        protected Command(IStateBase owner,object? value)
         {
             Owner = owner;
+            Value = value;
         }
     }
 }

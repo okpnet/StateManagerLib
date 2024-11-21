@@ -53,32 +53,31 @@ namespace StateManagerLib.Extensions
         /// <param name="properties"></param>
         /// <param name="value"></param>
         /// <returns></returns>
-        public static IDisposable CreateINotifyPropertyChangedSubscriber(this IEnumerable<IPropertyState> propertyStates, object value)
+        public static IDisposable CreateINotifyPropertyChangedSubscriber(this IStateBase stateful, object value)
         {
             return 
                 Observable.FromEventPattern<PropertyChangedEventArgs>(value, nameof(INotifyPropertyChanged.PropertyChanged)).Subscribe(t =>
                 {
+
                     var propName = t.EventArgs.PropertyName;
-                    
-                    if (propName is (null or "") || !propertyStates.FirstOrDefault(t=>t.Name==propName).IfDeclare(out var propertyState))
+                    if(propName is (null or "") || stateful is not StateBase stateBase)
                     {
                         return;
                     }
+                    var changeValue = value.GetValueFromPropertyPath(propName);
+                    stateBase.Change(new PropertyChangeCommand(stateBase, propName, changeValue));
 
-                    if (value.GetValueFromPropertyPath(propName).IfDeclare(out var result))
+                    if (stateful is not IReferenceState referenceState  || !referenceState.Properties.FirstOrDefault(t=>t.Name==propName).IfDeclare(out var propertyState))
                     {
-                        ((IDisposable)propertyState!).Dispose();
-                        //コマンド追加
-                        var cmd = new PropertyChangeCommand(propertyState, propName, result);
-                        propertyState!.Root.CommandStack.PushCommandOnStack(cmd);
-                        propertyState.AddCommandToState(cmd);
-                        propertyState!.AddNotifyChangedListener(result!);
-                        propertyState.GetPropertyStates(result!);
+                        return;
                     }
-                    else
+                    ((IDisposable)propertyState!).Dispose();
+                    if (changeValue is null)
                     {
-                        ((IDisposable)propertyState!).Dispose();
+                        return;
                     }
+                    propertyState!.AddNotifyChangedListener(changeValue);
+                    propertyState.GetPropertyStates(changeValue);
                 });
         }
         /// <summary>
@@ -87,7 +86,7 @@ namespace StateManagerLib.Extensions
         /// <param name="properties"></param>
         /// <param name="value"></param>
         /// <returns></returns>
-        public static IDisposable CreateINotifyCollectionChangedSubscriber(this IStateBase property, object value)
+        public static IDisposable CreateINotifyCollectionChangedSubscriber(this IStateBase stateful, object value)
         {
             return
                 Observable.FromEventPattern<NotifyCollectionChangedEventArgs>(value, nameof(INotifyCollectionChanged.CollectionChanged)).Subscribe(t =>
@@ -97,28 +96,84 @@ namespace StateManagerLib.Extensions
                         //コマンド追加
                         var cmd = t.EventArgs.Action switch
                         {
-                            NotifyCollectionChangedAction.Add => new CollectionChangeCommand(property, t.EventArgs.NewItems!),
-                            NotifyCollectionChangedAction.Remove => new CollectionChangeCommand(property, t.EventArgs.OldItems!),
-                            NotifyCollectionChangedAction.Reset=> new CollectionChangeCommand(property, t.EventArgs.OldItems!),
+                            NotifyCollectionChangedAction.Add => new CollectionChangeCommand(stateful, t.EventArgs.NewItems!),
+                            NotifyCollectionChangedAction.Remove => new CollectionChangeCommand(stateful, t.EventArgs.OldItems!),
+                            NotifyCollectionChangedAction.Reset=> new CollectionChangeCommand(stateful, t.EventArgs.OldItems!),
                             _=>throw new NotImplementedException()
                         };
 
-                        var root = property switch
+                        var root = stateful switch
                         {
                             IPropertyState propertyState => propertyState.Root,
                             IRootState rootState => rootState,
                             _ => throw new NotImplementedException()
                         };
+                        
+                        var stateCollection = root.CommandStack as IStateCollecion;
+                        if(stateCollection is not null)
+                        {
+                            if (t.EventArgs.NewItems is not null)
+                            {
+                                foreach (var newItem in t.EventArgs.NewItems)
+                                {
+                                    if (newItem is null)
+                                    {
+                                        continue;
+                                    }
+                                    stateCollection.Add(newItem);
+                                }
+                            }
+
+                            if(t.EventArgs.OldItems is not null && root.CommandStack is IStateCollecion collection)
+                            {
+                                foreach (var oldItem in t.EventArgs.OldItems)
+                                {
+                                    if (oldItem is null)
+                                    {
+                                        continue;
+                                    }
+                                    stateCollection.Remove(oldItem);
+                                }
+                            }
+                        }
                         root.CommandStack.PushCommandOnStack(cmd);
                     }
                     else
                     {
-                        if(property is IDisposable disposable)
+                        if(stateful is IDisposable disposable)
                         {
                             disposable.Dispose();
                         }
                     }
                 });
+        }
+        /// <summary>
+        /// ルートがもつ全てのIStateインターフェイス
+        /// </summary>
+        /// <param name="root"></param>
+        /// <returns></returns>
+        public static IEnumerable<IStateBase> GetAllDescendants(this IRootState root) => Recursive(root);
+        /// <summary>
+        /// 子の再帰取得
+        /// </summary>
+        /// <param name="state"></param>
+        /// <returns></returns>
+        public static IEnumerable<IStateBase> Recursive(IStateBase state)
+        {
+            yield return state;
+            if(state is not IReferenceState refState)
+            {
+                yield break;
+            }
+            foreach(var property in refState.Properties)
+            {
+                yield return property;
+                var reults = Recursive(property);
+                foreach (var reult in reults)
+                {
+                    yield return reult;
+                }
+            }
         }
     }
 }

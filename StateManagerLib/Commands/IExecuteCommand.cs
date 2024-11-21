@@ -15,11 +15,15 @@ namespace StateManagerLib.Commands
         /// <summary>
         /// オーナー
         /// </summary>
-        public IStateBase Owner { get; }
+        IStateBase Owner { get; }
+        /// <summary>
+        /// セットされたインスタンス
+        /// </summary>
+        object? Value { get; }
         /// <summary>
         /// 戻す
         /// </summary>
         /// <returns></returns>
-        bool Execute(object refValue);
+        bool Execute();
     }
 }

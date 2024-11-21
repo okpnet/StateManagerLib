@@ -1,4 +1,5 @@
-﻿using StateManagerLib.StateModels;
+﻿using LinqExtenssions;
+using StateManagerLib.StateModels;
 using System.Collections;
 
 namespace StateManagerLib.Commands
@@ -9,19 +10,21 @@ namespace StateManagerLib.Commands
         /// どんな操作がされたか
         /// </summary>
         public CollectionOperationType Operation { get; }
-        /// <summary>
-        /// セットされるまえの値
-        /// </summary>
-        public object? Value { get; }
 
-        public CollectionChangeCommand(IStateBase owner,object value) : base(owner)
+        public CollectionChangeCommand(IStateBase owner,object? value) : base(owner,value)
         {
-            Value = value;
         }
 
-        public override bool Execute(object refValue)
+        public override bool Execute()
         {
-            if(refValue is not ICollection collection)
+            var refValue = Owner switch
+            {
+                IRootState root => root.Value,
+                IPropertyState property => property.Root.Value.GetValueFromPropertyPath(string.Join('.', property.Paths)),
+                _ => null
+            };
+
+            if (refValue is not ICollection collection)
             {
                 return false;
             }

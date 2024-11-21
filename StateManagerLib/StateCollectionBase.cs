@@ -1,26 +1,32 @@
 ﻿using StateManagerLib.Commands;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Input;
 
 namespace StateManagerLib
 {
-    public abstract class StateCollectionBase : ICommandStack,IDisposable
+    /// <summary>
+    /// スタックコマンド
+    /// </summary>
+    public abstract class StateCollectionBase : ICommandStack ,IDisposable
     {
-        protected Stack<IExecuteCommand> prevCommands = new();
+        protected LinkedList<IExecuteCommand> executeCommands = new();
+        /// <summary>
+        /// 
+        /// </summary>
 
-        public void Dispose()
+        protected IExecuteCommand? current;
+
+        public virtual void Dispose()
         {
-            prevCommands.Clear();
+            executeCommands.Clear();
             GC.SuppressFinalize(this);
         }
 
         public void PushCommandOnStack(IExecuteCommand command)
         {
-            prevCommands.Push(command);
+            if(current is not null)
+            {
+                executeCommands.AddFirst(current);
+            }
+            current = command;
         }
     }
 }

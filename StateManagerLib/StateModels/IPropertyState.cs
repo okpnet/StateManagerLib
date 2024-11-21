@@ -33,6 +33,5 @@ namespace StateManagerLib.StateModels
         /// </summary>
         /// <param name="value"></param>
         void AddNotifyChangedListener(object value);
-        public void AddCommandToState(IExecuteCommand command);
     }
 }
